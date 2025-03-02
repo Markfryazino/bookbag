@@ -1,0 +1,72 @@
+{
+  "manifest_version": 3,
+  "name": "bookbag",
+  "version": "1.0",
+  "description": "Save and organize academic papers with notes and citations",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://arxiv.org/*",
+    "https://*.arxiv.org/*",
+    "https://scholar.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/icon16.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "images/icon16.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://arxiv.org/*",
+        "https://*.arxiv.org/*",
+        "https://arxiv.org/pdf/*",
+        "https://*.arxiv.org/pdf/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["popup.html"],
+      "matches": ["https://arxiv.org/*", "https://*.arxiv.org/*"]
+    }
+  ],
+  "commands": {
+    "_execute_action": {
+      "description": "Open paper saver popup"
+    },
+    "save_paper": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+P",
+        "mac": "Command+Shift+P"
+      },
+      "description": "Quick save current paper"
+    },
+    "save_to_read": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+O",
+        "mac": "Command+Shift+O"
+      },
+      "description": "Instantly save paper with 'to read' tag"
+    }
+  }
+} 

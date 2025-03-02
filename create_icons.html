@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Icon Generator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .icon-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 20px 0;
+    }
+    canvas {
+      border: 1px solid #ddd;
+      margin-bottom: 10px;
+    }
+    button {
+      padding: 8px 16px;
+      background: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    h1, h2 {
+      text-align: center;
+    }
+    .instructions {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Chrome Extension Icon Generator</h1>
+  
+  <div class="instructions">
+    <h2>Instructions</h2>
+    <ol>
+      <li>Below are your three placeholder icons with "APS" text</li>
+      <li>Right-click on each icon and select "Save Image As..."</li>
+      <li>Save them as <code>icon16.png</code>, <code>icon48.png</code>, and <code>icon128.png</code> in the <code>images</code> folder</li>
+      <li>After saving all three icons, you can close this page</li>
+    </ol>
+  </div>
+  
+  <div class="icon-container">
+    <h3>16x16 Icon</h3>
+    <canvas id="canvas16" width="16" height="16"></canvas>
+    <a id="download16" download="icon16.png" href="#">Download icon16.png</a>
+  </div>
+  
+  <div class="icon-container">
+    <h3>48x48 Icon</h3>
+    <canvas id="canvas48" width="48" height="48"></canvas>
+    <a id="download48" download="icon48.png" href="#">Download icon48.png</a>
+  </div>
+  
+  <div class="icon-container">
+    <h3>128x128 Icon</h3>
+    <canvas id="canvas128" width="128" height="128"></canvas>
+    <a id="download128" download="icon128.png" href="#">Download icon128.png</a>
+  </div>
+  
+  <script>
+    // Function to draw icons
+    function drawIcon(canvasId, size) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      
+      // Background color - Google Blue
+      ctx.fillStyle = '#4285f4';
+      ctx.fillRect(0, 0, size, size);
+      
+      // Text settings
+      ctx.fillStyle = 'white';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      // Set font size based on icon size
+      const fontSize = Math.floor(size * 0.5);
+      ctx.font = `bold ${fontSize}px Arial`;
+      
+      // Draw text
+      ctx.fillText('APS', size/2, size/2);
+      
+      // Set download link
+      const downloadLink = document.getElementById(`download${size}`);
+      downloadLink.href = canvas.toDataURL('image/png');
+    }
+    
+    // Draw all icons when page loads
+    window.onload = function() {
+      drawIcon('canvas16', 16);
+      drawIcon('canvas48', 48);
+      drawIcon('canvas128', 128);
+    };
+  </script>
+</body>
+</html> 
