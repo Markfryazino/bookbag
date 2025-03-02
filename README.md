@@ -1,3 +1,5 @@
+![bookbag](images/bookbag_example.png)
+
 # bookbag
 
 A Chrome extension to save and organize academic papers with notes and citations.
