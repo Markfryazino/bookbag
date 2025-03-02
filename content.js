@@ -432,9 +432,6 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
       max-height: 80vh;
     `;
 
-    // Ensure it's draggable
-    makeDraggable(popup);
-
     // Create popup header
     const header = document.createElement("div");
     header.style.cssText = `
@@ -507,6 +504,9 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
 
     popup.appendChild(content);
     document.body.appendChild(popup);
+    
+    // Make the popup draggable AFTER adding it to the DOM
+    makeDraggable(popup);
 
     // Set up auto-save for all papers (new and existing)
     let autoSaveTimeout;
