@@ -57,7 +57,7 @@ The "to read" tag appears in red in your library for easy identification of pape
 
 ### Browsing Your Library
 
-1. Click on the extension icon
+1. Click on the extension icon or press Ctrl+Shift+L (or Command+Shift+L on Mac)
 2. Navigate to the "My Library" tab
 3. Browse through your saved papers
 4. Use the search bar to filter papers by title, notes, or tags

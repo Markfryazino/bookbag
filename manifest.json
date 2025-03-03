@@ -67,6 +67,13 @@
         "mac": "Command+Shift+O"
       },
       "description": "Instantly save paper with 'to read' tag"
+    },
+    "open_main_window": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+L",
+        "mac": "Command+Shift+L"
+      },
+      "description": "Open the main extension window"
     }
   }
 } 

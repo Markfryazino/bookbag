@@ -10,6 +10,8 @@ chrome.commands.onCommand.addListener((command) => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       chrome.tabs.sendMessage(tabs[0].id, { action: "saveToRead" });
     });
+  } else if (command === "open_main_window") {
+    chrome.action.openPopup(); // Open the popup.html
   }
 });
 
