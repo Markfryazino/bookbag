@@ -595,15 +595,24 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
                       // Update isExistingPaper so future edits are treated as updates
                       isExistingPaper = true;
                       // Update header to reflect that the paper is now saved
-                      // header.innerHTML = 'Paper Notes';
                       header.firstChild.textContent = 'Paper Notes';
-                      // closeButton.outerHTML = closeButton.outerHTML; // Re-create the button to reset event listeners
+
+                      paperInfo = { 
+                        ...saveResponse.savedPaper,  // Use the returned data
+                        notes: notes,
+                        tags: tags 
+                      };
+
                       const newCloseButton = closeButton.cloneNode(true);
                       closeButton.parentNode.replaceChild(newCloseButton, closeButton);
                       newCloseButton.addEventListener('click', () => popup.remove());
                       popup.querySelector('.popup-header button').addEventListener('click', () => popup.remove());
                       // Update our local reference to paperInfo to include the new ID
-                      paperInfo = { ...paperData, id: Date.now().toString() };
+                      paperInfo = { 
+                        ...saveResponse.savedPaper,  // Contains correct ID from background
+                        notes: notes,
+                        tags: tags
+                      };
                     } else {
                       updateStatus("Error saving paper", true);
                     }

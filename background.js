@@ -204,7 +204,7 @@ function savePaperToDatabase(paperData, callback) {
     
     // Save back to storage
     chrome.storage.local.set({ papers: papers }, () => {
-      callback({ success: true, paperCount: papers.length });
+      callback({ success: true, paperCount: papers.length, savedPaper: paperWithMeta });
     });
   });
 }
