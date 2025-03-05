@@ -74,14 +74,34 @@ document.addEventListener('DOMContentLoaded', function() {
       // Get paper info from content script
       chrome.tabs.sendMessage(activeTab.id, { action: "getPaperInfo" }, response => {
         if (response && response.title) {
-          // Show paper details
-          currentPaperInfo = response;
-          paperTitle.textContent = response.title;
-          paperAuthors.textContent = response.authors;
-          noPaperMessage.style.display = 'none';
-          paperDetails.style.display = 'block';
+          chrome.runtime.sendMessage({ action: "getPapers" }, libraryResponse => {
+            const existingPaper = libraryResponse.papers.find(
+              p => p.arxivId === response.arxivId
+            );
+      
+            // Preserve current page's metadata while merging existing notes/tags
+            currentPaperInfo = {
+              ...response, // Current page's fresh metadata
+              ...(existingPaper && { 
+                id: existingPaper.id,
+                notes: existingPaper.notes,
+                tags: existingPaper.tags,
+                // Preserve existing citation if needed
+                citation: existingPaper.citation || response.citation
+              })
+            };
+      
+            // Update UI elements
+            paperTitle.textContent = response.title; // Always use current title
+            paperAuthors.textContent = response.authors; // Always use current authors
+            paperNotes.value = existingPaper?.notes || '';
+            paperTags.value = existingPaper?.tags?.join(', ') || '';
+            savePaperBtn.textContent = existingPaper ? 'Update Paper' : 'Save Paper';
+      
+            noPaperMessage.style.display = 'none';
+            paperDetails.style.display = 'block';
+          });
         } else {
-          // No paper info found
           noPaperMessage.style.display = 'block';
           paperDetails.style.display = 'none';
         }
@@ -95,15 +115,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Save paper button click handler
   savePaperBtn.addEventListener('click', () => {
-    if (!currentPaperInfo) {
-      showNotification('No paper detected');
-      return;
-    }
-
+    if (!currentPaperInfo) return;
+  
     const notes = paperNotes.value;
     const tags = paperTags.value.split(',').map(tag => tag.trim()).filter(tag => tag);
-
-    // Fetch citation
+  
+    const isUpdate = !!currentPaperInfo.id;
+    
     chrome.runtime.sendMessage({ 
       action: "fetchCitation", 
       title: currentPaperInfo.title 
@@ -115,16 +133,20 @@ document.addEventListener('DOMContentLoaded', function() {
           tags,
           citation: response.citation
         };
-
-        // Save to database
+  
+        const action = isUpdate ? "updatePaper" : "savePaper";
+        
         chrome.runtime.sendMessage({ 
-          action: "savePaper", 
+          action: action,
           paperData 
         }, saveResponse => {
           if (saveResponse.success) {
-            showNotification('Paper saved successfully!');
-            paperNotes.value = '';
-            paperTags.value = '';
+            showNotification(isUpdate ? 'Paper updated!' : 'Paper saved!');
+            if (!isUpdate) {
+              paperNotes.value = '';
+              paperTags.value = '';
+            }
+            loadPapers(); // Refresh library
           } else {
             showNotification('Error saving paper.');
           }

@@ -401,6 +401,7 @@ function showSavedPaperPopup(paperData) {
 
 // Show popup with the provided data
 function showPopupWithData(paperInfo, isExistingPaper = false) {
+  let isPopupAlive = true;
   console.log("Showing popup with data:", paperInfo, "isExistingPaper:", isExistingPaper);
 
   try {
@@ -463,6 +464,8 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
       line-height: 1;
     `;
     closeButton.addEventListener('click', () => {
+      isPopupAlive = false;
+      clearTimeout(autoSaveTimeout);
       popup.remove();
     });
     header.appendChild(closeButton);
@@ -531,73 +534,93 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
     
     // Function to handle auto-save
     const handleAutoSave = () => {
+      if (!isPopupAlive) return; // Prevent saves after popup closed
+
       clearTimeout(autoSaveTimeout);
       statusElement.textContent = 'Saving...';
       
       // Set a timeout to avoid saving on every keystroke
       autoSaveTimeout = setTimeout(() => {
-        const notes = notesInput.value;
-        const tags = tagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag);
-        
-        if (isExistingPaper) {
-          // Update existing paper
-          const updatedPaper = {
-            ...paperInfo,
-            notes: notes,
-            tags: tags
-          };
+        try {
+          if (!document.body.contains(popup)) return;
+
+          const notes = notesInput.value;
+          const tags = tagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag);
           
-          chrome.runtime.sendMessage({
-            action: "updatePaper",
-            paperData: updatedPaper
-          }, response => {
-            if (response && response.success) {
-              updateStatus("Saved");
-              // Update our local reference to paperInfo
-              paperInfo.notes = notes;
-              paperInfo.tags = tags;
-            } else {
-              updateStatus("Error saving", true);
-            }
-          });
-        } else {
-          // Save new paper if notes have been entered
-          if (notes.trim() !== '') {
+          if (!notesInput || !tagsInput || !statusElement) {
+            throw new Error('DOM elements missing');
+          }
+          if (isExistingPaper) {
+            // Update existing paper
+            const updatedPaper = {
+              ...paperInfo,
+              notes: notes,
+              tags: tags
+            };
+            
             chrome.runtime.sendMessage({
-              action: "fetchCitation",
-              title: paperInfo.title
+              action: "updatePaper",
+              paperData: updatedPaper
             }, response => {
               if (response && response.success) {
-                const paperData = {
-                  ...paperInfo,
-                  notes: notes,
-                  tags: tags,
-                  citation: response.citation
-                };
-
-                chrome.runtime.sendMessage({
-                  action: "savePaper",
-                  paperData: paperData
-                }, saveResponse => {
-                  if (saveResponse && saveResponse.success) {
-                    updateStatus("Paper saved");
-                    // Update isExistingPaper so future edits are treated as updates
-                    isExistingPaper = true;
-                    // Update header to reflect that the paper is now saved
-                    header.innerHTML = 'Paper Notes';
-                    closeButton.outerHTML = closeButton.outerHTML; // Re-create the button to reset event listeners
-                    popup.querySelector('.popup-header button').addEventListener('click', () => popup.remove());
-                    // Update our local reference to paperInfo to include the new ID
-                    paperInfo = { ...paperData, id: Date.now().toString() };
-                  } else {
-                    updateStatus("Error saving paper", true);
-                  }
-                });
+                updateStatus("Saved");
+                // Update our local reference to paperInfo
+                paperInfo.notes = notes;
+                paperInfo.tags = tags;
               } else {
-                updateStatus("Error fetching citation", true);
+                updateStatus("Error saving", true);
               }
             });
+          } else {
+            // Save new paper if notes have been entered
+            if (notes.trim() !== '') {
+              chrome.runtime.sendMessage({
+                action: "fetchCitation",
+                title: paperInfo.title
+              }, response => {
+                if (response && response.success) {
+                  const paperData = {
+                    ...paperInfo,
+                    notes: notes,
+                    tags: tags,
+                    citation: response.citation
+                  };
+
+                  chrome.runtime.sendMessage({
+                    action: "savePaper",
+                    paperData: paperData
+                  }, saveResponse => {
+                    if (saveResponse && saveResponse.success) {
+                      updateStatus("Paper saved");
+                      // Update isExistingPaper so future edits are treated as updates
+                      isExistingPaper = true;
+                      // Update header to reflect that the paper is now saved
+                      // header.innerHTML = 'Paper Notes';
+                      header.firstChild.textContent = 'Paper Notes';
+                      // closeButton.outerHTML = closeButton.outerHTML; // Re-create the button to reset event listeners
+                      const newCloseButton = closeButton.cloneNode(true);
+                      closeButton.parentNode.replaceChild(newCloseButton, closeButton);
+                      newCloseButton.addEventListener('click', () => popup.remove());
+                      popup.querySelector('.popup-header button').addEventListener('click', () => popup.remove());
+                      // Update our local reference to paperInfo to include the new ID
+                      paperInfo = { ...paperData, id: Date.now().toString() };
+                    } else {
+                      updateStatus("Error saving paper", true);
+                    }
+                  });
+                } else {
+                  updateStatus("Error fetching citation", true);
+                }
+              });
+            }
           }
+        } catch (error) {
+          console.error('Auto-save failed:', error);
+          if (statusElement) {
+            statusElement.textContent = 'Save failed - please refresh';
+            statusElement.style.color = '#d32f2f';
+          }
+          return; // Exit to prevent further execution
         }
       }, 1000); // Wait 1 second after typing stops
     };
