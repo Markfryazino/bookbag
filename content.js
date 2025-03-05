@@ -573,7 +573,7 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
             });
           } else {
             // Save new paper if notes have been entered
-            if (notes.trim() !== '') {
+            if (notes.trim() !== '' || tags.length > 0) {
               chrome.runtime.sendMessage({
                 action: "fetchCitation",
                 title: paperInfo.title
