@@ -75,9 +75,20 @@ document.addEventListener('DOMContentLoaded', function() {
       chrome.tabs.sendMessage(activeTab.id, { action: "getPaperInfo" }, response => {
         if (response && response.title) {
           chrome.runtime.sendMessage({ action: "getPapers" }, libraryResponse => {
-            const existingPaper = libraryResponse.papers.find(
-              p => p.arxivId === response.arxivId
-            );
+            // Enhanced paper matching logic that handles undefined arxivId
+            let existingPaper = null;
+            
+            // First try to match by arxivId if available
+            if (response.arxivId) {
+              existingPaper = libraryResponse.papers.find(p => p.arxivId === response.arxivId);
+            }
+            
+            // If no match by arxivId, try to match by title (as a fallback)
+            if (!existingPaper && response.title) {
+              existingPaper = libraryResponse.papers.find(p => 
+                p.title.toLowerCase().trim() === response.title.toLowerCase().trim()
+              );
+            }
       
             // Preserve current page's metadata while merging existing notes/tags
             currentPaperInfo = {
@@ -92,8 +103,8 @@ document.addEventListener('DOMContentLoaded', function() {
             };
       
             // Update UI elements
-            paperTitle.textContent = response.title; // Always use current title
-            paperAuthors.textContent = response.authors; // Always use current authors
+            paperTitle.textContent = currentPaperInfo.title; // Always use current title
+            paperAuthors.textContent = currentPaperInfo.authors; // Always use current authors
             paperNotes.value = existingPaper?.notes || '';
             paperTags.value = existingPaper?.tags?.join(', ') || '';
             savePaperBtn.textContent = existingPaper ? 'Update Paper' : 'Save Paper';

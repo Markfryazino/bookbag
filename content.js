@@ -402,6 +402,7 @@ function showSavedPaperPopup(paperData) {
 // Show popup with the provided data
 function showPopupWithData(paperInfo, isExistingPaper = false) {
   let isPopupAlive = true;
+  let autoSaveTimeout;
   console.log("Showing popup with data:", paperInfo, "isExistingPaper:", isExistingPaper);
 
   try {
@@ -512,7 +513,6 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
     makeDraggable(popup);
 
     // Set up auto-save for all papers (new and existing)
-    let autoSaveTimeout;
     const notesInput = document.getElementById("paper-notes-input");
     const tagsInput = document.getElementById("paper-tags-input");
     const statusElement = document.getElementById("auto-save-status");
@@ -535,6 +535,11 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
     // Function to handle auto-save
     const handleAutoSave = () => {
       if (!isPopupAlive) return; // Prevent saves after popup closed
+      if (!document.body.contains(popup)) {
+        isPopupAlive = false;
+        clearTimeout(autoSaveTimeout);
+        return;
+      }
 
       clearTimeout(autoSaveTimeout);
       statusElement.textContent = 'Saving...';
@@ -542,7 +547,10 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
       // Set a timeout to avoid saving on every keystroke
       autoSaveTimeout = setTimeout(() => {
         try {
-          if (!document.body.contains(popup)) return;
+          if (!isPopupAlive || !document.body.contains(popup)) {
+            clearTimeout(autoSaveTimeout);
+            return;
+          }
 
           const notes = notesInput.value;
           const tags = tagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag);
@@ -641,6 +649,8 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
     // Add keyboard shortcut (ESC to close)
     document.addEventListener("keydown", function escKeyHandler(e) {
       if (e.key === "Escape") {
+        isPopupAlive = false;
+        clearTimeout(autoSaveTimeout);
         popup.remove();
         document.removeEventListener("keydown", escKeyHandler);
       }
@@ -662,6 +672,24 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
         popup.remove();
       }
     });
+
+    // Define a cleanup function for the popup
+    const cleanupPopup = () => {
+      if (!isPopupAlive) return; // Prevent multiple cleanups
+      isPopupAlive = false;
+      clearTimeout(autoSaveTimeout);
+    };
+
+    // Add a MutationObserver to detect if the popup is removed from DOM by external means
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList' && Array.from(mutation.removedNodes).includes(popup)) {
+          cleanupPopup();
+          observer.disconnect();
+        }
+      });
+    });
+    observer.observe(document.body, { childList: true });
 
     console.log("Popup created and added to the page");
   } catch (error) {
