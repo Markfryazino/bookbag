@@ -178,6 +178,7 @@
     
     .search-bar {
       width: 100%;
+      height: 26px;
       padding: 8px;
       border: 1px solid #ddd;
       border-radius: 4px;
@@ -242,6 +243,47 @@
       z-index: 1000;
       display: none;
     }
+
+    .library-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      align-items: baseline;
+      background: #f8f9fa;
+      padding: 8px;
+      border-radius: 8px;
+    }
+
+    .icon-button {
+      background: #4285f4;
+      border: none;
+      padding: 6px; /* Reduced padding */
+      width: 26px; /* Fixed width */
+      height: 26px; /* Fixed height */
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .icon-button svg {
+      width: 15px; /* Smaller icon */
+      height: 15px; /* Smaller icon */
+      stroke: white;
+      stroke-width: 1.5;
+    }
+
+    /* Add new alignment helper */
+    .button-group {
+      display: flex;
+      gap: 6px;
+      height: 26px;
+      align-items: center;
+    }
+
   </style>
 </head>
 <body>
@@ -289,8 +331,23 @@
     </div>
     
     <div class="panel" id="library-panel">
-      <input type="text" class="search-bar" id="search-input" placeholder="Search papers...">
-      
+      <div class="library-controls">
+        <input type="text" class="search-bar" id="search-input" placeholder="Search papers...">
+        <div class="button-group">
+          <button id="import-btn" class="icon-button" title="Import backup">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5-5 5 5M12 15V3"/>
+            </svg>
+          </button>
+          <button id="export-btn" class="icon-button" title="Export backup">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            </svg>
+          </button>
+        </div>
+        <input type="file" id="import-input" accept=".json" hidden>
+      </div>
+
       <div class="paper-list" id="paper-list">
         <div class="empty-state" id="empty-library-message">
           <p>Your library is empty.</p>

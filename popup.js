@@ -14,6 +14,9 @@ document.addEventListener('DOMContentLoaded', function() {
   const emptyLibraryMessage = document.getElementById('empty-library-message');
   const searchInput = document.getElementById('search-input');
   const notification = document.getElementById('notification');
+  const exportBtn = document.getElementById('export-btn');
+  const importBtn = document.getElementById('import-btn');
+  const importInput = document.getElementById('import-input');
 
   let currentPaperInfo = null;
   let allPapers = [];
@@ -349,6 +352,60 @@ document.addEventListener('DOMContentLoaded', function() {
       }, 500);
     }, 3000);
   }
+
+  // Export functionality
+  exportBtn.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ action: "getPapers" }, response => {
+      const data = JSON.stringify(response.papers, null, 2);
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const dateString = new Date().toISOString().split('T')[0];
+      chrome.downloads.download({
+        url: url,
+        filename: `bookbag-backup-${dateString}.json`,
+        conflictAction: 'uniquify'
+      });
+      
+      showNotification(`Exported ${response.papers.length} papers`);
+    });
+  });
+
+  // Import functionality
+  importBtn.addEventListener('click', () => importInput.click());
+
+  importInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const papers = JSON.parse(e.target.result);
+        if (!Array.isArray(papers)) throw new Error('Invalid format');
+        
+        // Basic validation
+        const isValid = papers.every(p => p.id && p.title && p.url);
+        if (!isValid) throw new Error('Invalid paper format');
+
+        if (confirm(`Import ${papers.length} papers? This will overwrite current data!`)) {
+          chrome.runtime.sendMessage({ 
+            action: "importPapers",
+            papers: papers
+          }, response => {
+            if (response.success) {
+              showNotification(`Imported ${papers.length} papers`);
+              loadPapers();
+            }
+          });
+        }
+      } catch (error) {
+        showNotification('Invalid backup file: ' + error.message);
+      }
+      importInput.value = ''; // Reset input
+    };
+    reader.readAsText(file);
+  });
 
   // Initial load
   loadPapers();

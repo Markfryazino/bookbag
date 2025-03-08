@@ -32,6 +32,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === "updatePaper") {
     updatePaperInDatabase(request.paperData, sendResponse);
     return true; // Required for asynchronous response
+  } else if (request.action === "importPapers") {
+    chrome.storage.local.set({ papers: request.papers }, () => {
+      sendResponse({ success: true });
+    });
+    return true;
   }
   // NOTE: BibTeX feature is disabled in the UI but code remains for future development
   else if (request.action === "fetchBibtexCitation") {
