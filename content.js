@@ -3,39 +3,59 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log("Message received in content script:", request.action);
   
   if (request.action === "quickSave" || request.action === "getPaperInfo" || request.action === "saveToRead") {
-    const isPDF = window.location.pathname.includes('/pdf/') || window.location.pathname.endsWith('.pdf');
-    console.log("Is PDF page:", isPDF, "Path:", window.location.pathname);
+    const isPDF = window.location.pathname.endsWith('.pdf') || document.contentType === 'application/pdf';
+    const isArxiv = window.location.hostname.includes('arxiv.org');
+    console.log("Is PDF page:", isPDF, "Is arXiv:", isArxiv, "Path:", window.location.pathname);
     
     let paperInfo;
     if (isPDF) {
-      paperInfo = extractPaperInfoFromPDFUrl();
+      if (isArxiv) {
+        paperInfo = extractArxivPaperInfoFromPDFUrl();
+      } else {
+        paperInfo = extractGenericPDFInfo();
+      }
+      
       if (request.action === "getPaperInfo") {
-        // For getPaperInfo, we want to fetch metadata immediately
-        fetchMetadataFromAbstractPage(paperInfo.url)
-          .then(metadata => {
-            console.log("Fetched metadata:", metadata);
-            sendResponse({ ...paperInfo, ...metadata, isLoading: false });
-          })
-          .catch(error => {
-            console.error("Error fetching metadata:", error);
-            sendResponse(paperInfo);
-          });
-        return true; // Keep the message channel open for the async response
+        // For getPaperInfo, we want to fetch metadata immediately for arXiv papers
+        if (isArxiv) {
+          fetchMetadataFromAbstractPage(paperInfo.url)
+            .then(metadata => {
+              console.log("Fetched metadata:", metadata);
+              sendResponse({ ...paperInfo, ...metadata, isLoading: false });
+            })
+            .catch(error => {
+              console.error("Error fetching metadata:", error);
+              sendResponse(paperInfo);
+            });
+          return true; // Keep the message channel open for the async response
+        } else {
+          sendResponse(paperInfo);
+        }
       } else if (request.action === "saveToRead") {
-        // For saveToRead on PDF page, fetch metadata and then save with "to read" tag
-        fetchMetadataFromAbstractPage(paperInfo.url)
-          .then(metadata => {
-            console.log("Fetched metadata for instant save:", metadata);
-            saveToReadList({ ...paperInfo, ...metadata, isLoading: false });
-          })
-          .catch(error => {
-            console.error("Error fetching metadata for instant save:", error);
-            saveToReadList(paperInfo); // Try to save even with limited info
-          });
-        return true;
+        // For saveToRead on PDF page
+        if (isArxiv) {
+          fetchMetadataFromAbstractPage(paperInfo.url)
+            .then(metadata => {
+              console.log("Fetched metadata for instant save:", metadata);
+              saveToReadList({ ...paperInfo, ...metadata, isLoading: false });
+            })
+            .catch(error => {
+              console.error("Error fetching metadata for instant save:", error);
+              saveToReadList(paperInfo); // Try to save even with limited info
+            });
+          return true;
+        } else {
+          saveToReadList(paperInfo);
+          return true;
+        }
       }
     } else {
-      paperInfo = extractPaperInfo();
+      if (isArxiv) {
+        paperInfo = extractArxivPaperInfo();
+      } else {
+        paperInfo = extractGenericPageInfo();
+      }
+      
       if (request.action === "getPaperInfo") {
         sendResponse(paperInfo);
       } else if (request.action === "saveToRead") {
@@ -62,8 +82,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const currentUrl = window.location.href;
     const paperUrl = request.paperData.pdfUrl || request.paperData.url;
     
-    // Only show if we're on a matching page (allowing for http/https and www differences)
-    if (currentUrl.includes(request.paperData.arxivId)) {
+    // Only show if we're on a matching page
+    if (currentUrl.includes(request.paperData.arxivId) || 
+        currentUrl === paperUrl || 
+        normalizePDFUrl(currentUrl) === normalizePDFUrl(paperUrl)) {
       // Wait a moment for the page to fully initialize
       setTimeout(() => {
         showSavedPaperPopup(request.paperData);
@@ -77,55 +99,65 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // When page loads, check if current paper is already saved
 document.addEventListener('DOMContentLoaded', function() {
-  // Only run on arXiv pages
-  if (!window.location.hostname.includes('arxiv.org')) {
-    return;
-  }
-  
   console.log("Page loaded, checking if current paper is already saved");
   
   // Extract paper info based on page type
-  const isPDF = window.location.pathname.includes('/pdf/') || window.location.pathname.endsWith('.pdf');
+  const isPDF = window.location.pathname.endsWith('.pdf') || document.contentType === 'application/pdf';
+  const isArxiv = window.location.hostname.includes('arxiv.org');
   let paperInfo;
   
   if (isPDF) {
-    paperInfo = extractPaperInfoFromPDFUrl();
-    // For PDF pages, we need to fetch metadata to get complete info
-    fetchMetadataFromAbstractPage(paperInfo.url)
-      .then(metadata => {
-        const enrichedPaperInfo = { ...paperInfo, ...metadata, isLoading: false };
-        checkAndShowExistingPaper(enrichedPaperInfo);
-      })
-      .catch(error => {
-        console.error("Error fetching metadata:", error);
-        checkAndShowExistingPaper(paperInfo);
-      });
+    if (isArxiv) {
+      paperInfo = extractArxivPaperInfoFromPDFUrl();
+      // For arXiv PDF pages, we need to fetch metadata to get complete info
+      fetchMetadataFromAbstractPage(paperInfo.url)
+        .then(metadata => {
+          const enrichedPaperInfo = { ...paperInfo, ...metadata, isLoading: false };
+          checkAndShowExistingPaper(enrichedPaperInfo);
+        })
+        .catch(error => {
+          console.error("Error fetching metadata:", error);
+          checkAndShowExistingPaper(paperInfo);
+        });
+    } else {
+      paperInfo = extractGenericPDFInfo();
+      checkAndShowExistingPaper(paperInfo);
+    }
+  } else if (isArxiv) {
+    paperInfo = extractArxivPaperInfo();
+    checkAndShowExistingPaper(paperInfo);
   } else {
-    paperInfo = extractPaperInfo();
+    paperInfo = extractGenericPageInfo();
     checkAndShowExistingPaper(paperInfo);
   }
 });
 
-// Function to check if the paper is saved and show the popup if it is
+// Helper function to normalize PDF URLs for comparison
+function normalizePDFUrl(url) {
+  return url.toLowerCase().replace(/\?.*$/, '');
+}
+
+// Function to check if a paper is saved and show existing paper popup if it is
 function checkAndShowExistingPaper(paperInfo) {
-  if (!paperInfo || !paperInfo.arxivId) {
-    return;
-  }
-  
   checkIfPaperIsSaved(paperInfo).then(savedPaper => {
     if (savedPaper) {
-      console.log("Current paper is already saved, displaying popup after page load");
-      // Use a small delay to ensure the page is fully rendered
-      setTimeout(() => {
+      // Only show popup if there are notes or tags
+      if ((savedPaper.notes && savedPaper.notes.trim()) || 
+          (savedPaper.tags && savedPaper.tags.length > 0)) {
+        console.log("Found saved paper with notes/tags, showing popup:", savedPaper);
         showSavedPaperPopup(savedPaper);
-      }, 1500);
+      } else {
+        console.log("Found saved paper but no notes/tags, not showing popup");
+      }
+    } else {
+      console.log("Paper not found in library");
     }
   });
 }
 
-// Extract paper information from PDF URL
-function extractPaperInfoFromPDFUrl() {
-  console.log("Extracting paper info from PDF URL...");
+// Extract paper information from an arXiv PDF URL
+function extractArxivPaperInfoFromPDFUrl() {
+  console.log("Extracting arXiv paper info from PDF URL...");
   const url = window.location.href;
   
   // Convert PDF URL to abstract URL
@@ -151,13 +183,37 @@ function extractPaperInfoFromPDFUrl() {
     url: abstractUrl,
     arxivId: arxivId,
     pdfUrl: url,
-    isLoading: true
+    isLoading: true,
+    isArxiv: true
+  };
+}
+
+// Extract paper information from a generic PDF
+function extractGenericPDFInfo() {
+  console.log("Extracting generic PDF info...");
+  const url = window.location.href;
+  
+  // Extract filename from URL
+  let title = url;
+  const filenameMatch = url.match(/\/([^\/]+\.pdf)(?:\?|$)/i);
+  if (filenameMatch) {
+    title = decodeURIComponent(filenameMatch[1]).replace('.pdf', '');
+  }
+  
+  return {
+    title: title,
+    authors: "",
+    abstract: "",
+    url: url,
+    pdfUrl: url,
+    isEditable: true,
+    isArxiv: false
   };
 }
 
 // Extract paper information from the arXiv abstract page
-function extractPaperInfo() {
-  console.log("Starting paper info extraction...");
+function extractArxivPaperInfo() {
+  console.log("Starting arXiv paper info extraction...");
   
   let title = "";
   let authors = "";
@@ -263,7 +319,8 @@ function extractPaperInfo() {
       abstract,
       url,
       arxivId,
-      pdfUrl: url.replace("abs", "pdf") + ".pdf"
+      pdfUrl: url.replace("abs", "pdf") + ".pdf",
+      isArxiv: true
     };
 
     console.log("Final paper info:", paperInfo);
@@ -277,26 +334,70 @@ function extractPaperInfo() {
       abstract: "",
       url,
       arxivId: "",
-      pdfUrl: ""
+      pdfUrl: "",
+      isArxiv: true
     };
   }
+}
+
+// Extract information from a generic web page
+function extractGenericPageInfo() {
+  console.log("Extracting generic page info...");
+  const url = window.location.href;
+  
+  // Try to get page title
+  let title = document.title || url;
+  
+  // Try to get metadata authors if available
+  let authors = "";
+  const authorMeta = document.querySelector('meta[name="author"], meta[name="citation_author"]');
+  if (authorMeta) {
+    authors = authorMeta.getAttribute('content') || "";
+  }
+  
+  return {
+    title: title,
+    authors: authors,
+    abstract: "",
+    url: url,
+    pdfUrl: "",
+    isEditable: true,
+    isArxiv: false
+  };
 }
 
 // Function to check if a paper is already saved in the library
 async function checkIfPaperIsSaved(paperInfo) {
   return new Promise(resolve => {
-    if (!paperInfo || !paperInfo.arxivId) {
-      console.log("No valid paper info or arXiv ID to check");
+    if (!paperInfo) {
+      console.log("No valid paper info to check");
       return resolve(null);
     }
     
-    console.log("Checking if paper is already saved:", paperInfo.arxivId);
+    console.log("Checking if paper is already saved:", paperInfo);
     
     chrome.runtime.sendMessage({ action: "getPapers" }, response => {
       if (response && response.papers && response.papers.length > 0) {
-        // Look for a paper with matching arXiv ID
-        const savedPaper = response.papers.find(paper => 
-          paper.arxivId === paperInfo.arxivId);
+        let savedPaper = null;
+        
+        // For arXiv papers, match by arXiv ID
+        if (paperInfo.arxivId) {
+          savedPaper = response.papers.find(paper => 
+            paper.arxivId === paperInfo.arxivId);
+        }
+        
+        // If no match by arXiv ID or not an arXiv paper, try to match by URL
+        if (!savedPaper && paperInfo.url) {
+          savedPaper = response.papers.find(paper => 
+            normalizePDFUrl(paper.url) === normalizePDFUrl(paperInfo.url) ||
+            normalizePDFUrl(paper.pdfUrl) === normalizePDFUrl(paperInfo.url));
+        }
+        
+        // As a last resort, try to match by title
+        if (!savedPaper && paperInfo.title) {
+          savedPaper = response.papers.find(paper => 
+            paper.title.toLowerCase().trim() === paperInfo.title.toLowerCase().trim());
+        }
         
         if (savedPaper) {
           console.log("Found saved paper:", savedPaper);
@@ -317,8 +418,8 @@ async function checkIfPaperIsSaved(paperInfo) {
 function showQuickSavePopup(paperInfo, isExistingPaper = false) {
   console.log("Showing quick save popup with data:", paperInfo, "isExistingPaper:", isExistingPaper);
   
-  // If this is a PDF page and metadata is still loading, fetch it first
-  if (paperInfo.isLoading) {
+  // If this is an arXiv PDF page and metadata is still loading, fetch it first
+  if (paperInfo.isLoading && paperInfo.isArxiv) {
     fetchMetadataFromAbstractPage(paperInfo.url).then(metadata => {
       showPopupWithData({ ...paperInfo, ...metadata, isLoading: false }, isExistingPaper);
     }).catch(error => {
@@ -477,17 +578,40 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
     const content = document.createElement("div");
     content.style.cssText = "padding: 15px;";
 
-    // Title
-    content.innerHTML += `<div style="margin-bottom: 15px;">
-      <div style="font-weight: bold; margin-bottom: 5px;">Title</div>
-      <div style="padding: 8px; background: #f5f5f5; border-radius: 4px;">${paperInfo.title || ''}</div>
-    </div>`;
+    // Non-arXiv message
+    if (!paperInfo.isArxiv) {
+      content.innerHTML += `<div style="margin-bottom: 15px; padding: 8px; background: #fff3cd; border-radius: 4px; border: 1px solid #ffeeba; color: #856404;">
+        This doesn't appear to be an arXiv paper. Please edit the title and authors as needed.
+      </div>`;
+    }
 
-    // Authors
-    content.innerHTML += `<div style="margin-bottom: 15px;">
-      <div style="font-weight: bold; margin-bottom: 5px;">Authors</div>
-      <div style="padding: 8px; background: #f5f5f5; border-radius: 4px;">${paperInfo.authors || ''}</div>
-    </div>`;
+    // Title - editable if not arXiv or marked as editable
+    const isTitleEditable = !paperInfo.isArxiv || paperInfo.isEditable;
+    if (isTitleEditable) {
+      content.innerHTML += `<div style="margin-bottom: 15px;">
+        <div style="font-weight: bold; margin-bottom: 5px;">Title</div>
+        <input type="text" id="paper-title-input" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;" value="${paperInfo.title || ''}">
+      </div>`;
+    } else {
+      content.innerHTML += `<div style="margin-bottom: 15px;">
+        <div style="font-weight: bold; margin-bottom: 5px;">Title</div>
+        <div style="padding: 8px; background: #f5f5f5; border-radius: 4px;">${paperInfo.title || ''}</div>
+      </div>`;
+    }
+
+    // Authors - editable if not arXiv or marked as editable
+    const isAuthorsEditable = !paperInfo.isArxiv || paperInfo.isEditable;
+    if (isAuthorsEditable) {
+      content.innerHTML += `<div style="margin-bottom: 15px;">
+        <div style="font-weight: bold; margin-bottom: 5px;">Authors</div>
+        <input type="text" id="paper-authors-input" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;" value="${paperInfo.authors || ''}">
+      </div>`;
+    } else {
+      content.innerHTML += `<div style="margin-bottom: 15px;">
+        <div style="font-weight: bold; margin-bottom: 5px;">Authors</div>
+        <div style="padding: 8px; background: #f5f5f5; border-radius: 4px;">${paperInfo.authors || ''}</div>
+      </div>`;
+    }
 
     // Notes
     content.innerHTML += `<div style="margin-bottom: 15px;">
@@ -513,13 +637,19 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
     makeDraggable(popup);
 
     // Set up auto-save for all papers (new and existing)
+    const titleInput = document.getElementById("paper-title-input");
+    const authorsInput = document.getElementById("paper-authors-input");
     const notesInput = document.getElementById("paper-notes-input");
     const tagsInput = document.getElementById("paper-tags-input");
     const statusElement = document.getElementById("auto-save-status");
     
-    // Focus on the notes textarea when popup is created
+    // Focus on the relevant input when popup is created
     setTimeout(() => {
-      notesInput.focus();
+      if (isTitleEditable && titleInput) {
+        titleInput.focus();
+      } else {
+        notesInput.focus();
+      }
     }, 100);
     
     // Function to update status
@@ -548,103 +678,89 @@ function showPopupWithData(paperInfo, isExistingPaper = false) {
       autoSaveTimeout = setTimeout(() => {
         try {
           if (!isPopupAlive || !document.body.contains(popup)) {
-            clearTimeout(autoSaveTimeout);
             return;
           }
-
+          
+          // Get current values
           const notes = notesInput.value;
           const tags = tagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag);
           
-          if (!notesInput || !tagsInput || !statusElement) {
-            throw new Error('DOM elements missing');
+          // Get title and authors from input fields if they exist
+          let title = paperInfo.title;
+          let authors = paperInfo.authors;
+          
+          if (titleInput) {
+            title = titleInput.value.trim();
           }
+          
+          if (authorsInput) {
+            authors = authorsInput.value.trim();
+          }
+          
+          // For non-arXiv papers, validate required fields
+          if (!paperInfo.isArxiv && !title) {
+            updateStatus("Title is required", true);
+            return;
+          }
+          
+          const updatedPaperInfo = {
+            ...paperInfo,
+            title: title,
+            authors: authors,
+            notes: notes,
+            tags: tags
+          };
+          
           if (isExistingPaper) {
             // Update existing paper
-            const updatedPaper = {
-              ...paperInfo,
-              notes: notes,
-              tags: tags
-            };
-            
             chrome.runtime.sendMessage({
               action: "updatePaper",
-              paperData: updatedPaper
+              paperData: updatedPaperInfo
             }, response => {
               if (response && response.success) {
-                updateStatus("Saved");
-                // Update our local reference to paperInfo
-                paperInfo.notes = notes;
-                paperInfo.tags = tags;
+                updateStatus("Paper updated");
               } else {
-                updateStatus("Error saving", true);
+                updateStatus("Error updating paper", true);
+                console.error("Error updating paper:", response);
               }
             });
           } else {
-            // Save new paper if notes have been entered
-            if (notes.trim() !== '' || tags.length > 0) {
-              chrome.runtime.sendMessage({
-                action: "fetchCitation",
-                title: paperInfo.title
-              }, response => {
-                if (response && response.success) {
-                  const paperData = {
-                    ...paperInfo,
-                    notes: notes,
-                    tags: tags,
-                    citation: response.citation
-                  };
-
-                  chrome.runtime.sendMessage({
-                    action: "savePaper",
-                    paperData: paperData
-                  }, saveResponse => {
-                    if (saveResponse && saveResponse.success) {
-                      updateStatus("Paper saved");
-                      // Update isExistingPaper so future edits are treated as updates
-                      isExistingPaper = true;
-                      // Update header to reflect that the paper is now saved
-                      header.firstChild.textContent = 'Paper Notes';
-
-                      paperInfo = { 
-                        ...saveResponse.savedPaper,  // Use the returned data
-                        notes: notes,
-                        tags: tags 
-                      };
-
-                      const newCloseButton = closeButton.cloneNode(true);
-                      closeButton.parentNode.replaceChild(newCloseButton, closeButton);
-                      newCloseButton.addEventListener('click', () => popup.remove());
-                      popup.querySelector('.popup-header button').addEventListener('click', () => popup.remove());
-                      // Update our local reference to paperInfo to include the new ID
-                      paperInfo = { 
-                        ...saveResponse.savedPaper,  // Contains correct ID from background
-                        notes: notes,
-                        tags: tags
-                      };
-                    } else {
-                      updateStatus("Error saving paper", true);
-                    }
-                  });
-                } else {
-                  updateStatus("Error fetching citation", true);
-                }
-              });
-            }
+            // Save new paper
+            chrome.runtime.sendMessage({
+              action: "savePaper",
+              paperData: updatedPaperInfo
+            }, response => {
+              if (response && response.success) {
+                updateStatus("Paper saved");
+                isExistingPaper = true; // Now it's an existing paper
+                
+                // Update the paperInfo with the saved data (including generated ID)
+                paperInfo = response.savedPaper;
+              } else {
+                updateStatus("Error saving paper", true);
+                console.error("Error saving paper:", response);
+              }
+            });
           }
         } catch (error) {
-          console.error('Auto-save failed:', error);
-          if (statusElement) {
-            statusElement.textContent = 'Save failed - please refresh';
-            statusElement.style.color = '#d32f2f';
-          }
-          return; // Exit to prevent further execution
+          console.error("Error auto-saving paper:", error);
+          updateStatus("Error saving paper", true);
         }
-      }, 1000); // Wait 1 second after typing stops
+      }, 1000);
     };
+
+    // Add event listeners for auto-save
+    notesInput.addEventListener('input', handleAutoSave);
+    tagsInput.addEventListener('input', handleAutoSave);
     
-    // Add event listeners for input changes
-    notesInput.addEventListener("input", handleAutoSave);
-    tagsInput.addEventListener("input", handleAutoSave);
+    // Add event listeners for editable fields if they exist
+    if (titleInput) {
+      titleInput.addEventListener('input', handleAutoSave);
+    }
+    
+    if (authorsInput) {
+      authorsInput.addEventListener('input', handleAutoSave);
+    }
 
     // Add keyboard shortcut (ESC to close)
     document.addEventListener("keydown", function escKeyHandler(e) {
@@ -920,6 +1036,11 @@ function saveToReadList(paperInfo) {
       });
     } else {
       // New paper - save with 'to read' tag
+      // For non-arXiv papers, use URL as title if no title is provided
+      if (!paperInfo.isArxiv && !paperInfo.title) {
+        paperInfo.title = paperInfo.url;
+      }
+      
       chrome.runtime.sendMessage({
         action: "fetchCitation",
         title: paperInfo.title

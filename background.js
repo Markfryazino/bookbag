@@ -170,24 +170,39 @@ function provideFallbackBibtex(title, authors, callback) {
 // END OF DISABLED FEATURE: BibTeX Citation Generation
 // =========================================================
 
-// Function to fetch citation from Google Scholar
+// Function to fetch citation information
 async function fetchCitationFromScholar(title, callback) {
   try {
-    // In a real extension, you would use fetch() to call an API or scrape Scholar
-    // This is a simplified version due to CORS restrictions with Google Scholar
+    // For non-arXiv papers with URLs as titles, provide a generic citation
+    if (title.startsWith('http')) {
+      const citation = {
+        title: title,
+        url: title,
+        date: new Date().toLocaleDateString()
+      };
+      callback({ success: true, citation: JSON.stringify(citation) });
+      return;
+    }
     
-    // For now, we'll return a formatted citation based on the title
-    // In a production extension, you would integrate with a citation API or implement proper scraping
+    const response = await fetch(`https://scholar.google.com/scholar?q=${encodeURIComponent(title)}`);
+    const responseText = await response.text();
     
-    const authors = "Author et al.";
-    const year = new Date().getFullYear();
-    const journal = "arXiv preprint";
+    // Very basic citation extraction (in real-world, you might use a more robust API)
+    // This is just a placeholder for demonstration
+    const citation = {
+      title: title,
+      date: new Date().toLocaleDateString()
+    };
     
-    const citation = `${authors} (${year}). "${title}". ${journal}.`;
-    callback({ success: true, citation: citation });
+    callback({ success: true, citation: JSON.stringify(citation) });
   } catch (error) {
     console.error("Error fetching citation:", error);
-    callback({ success: false, error: error.message });
+    // Return a basic citation on error
+    const basicCitation = {
+      title: title,
+      date: new Date().toLocaleDateString()
+    };
+    callback({ success: true, citation: JSON.stringify(basicCitation) });
   }
 }
 
@@ -249,15 +264,18 @@ function updatePaperInDatabase(paperData, callback) {
   chrome.storage.local.get(['papers'], (result) => {
     const papers = result.papers || [];
     
-    // Find the index of the paper to update
-    const index = papers.findIndex(paper => paper.id === paperData.id);
+    // Find the paper by ID
+    const paperIndex = papers.findIndex(paper => paper.id === paperData.id);
     
-    if (index !== -1) {
-      // Update the paper but preserve original dateAdded and id
-      const originalPaper = papers[index];
-      papers[index] = {
-        ...paperData,
-        dateAdded: originalPaper.dateAdded || paperData.dateAdded
+    if (paperIndex !== -1) {
+      // Update the paper properties
+      papers[paperIndex] = {
+        ...papers[paperIndex],  // Keep existing metadata
+        title: paperData.title || papers[paperIndex].title,
+        authors: paperData.authors || papers[paperIndex].authors,
+        notes: paperData.notes,
+        tags: paperData.tags,
+        dateModified: new Date().toISOString()
       };
       
       // Save back to storage

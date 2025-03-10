@@ -101,12 +101,18 @@
     .paper-title {
       font-weight: 500;
       margin-bottom: 5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     
     .paper-authors {
       font-size: 12px;
       color: #666;
       margin-bottom: 5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     
     .paper-notes-preview {
@@ -284,6 +290,107 @@
       align-items: center;
     }
 
+    .paper-input, textarea, input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+      font-family: inherit;
+      font-size: 14px;
+    }
+    
+    .paper-input:focus, textarea:focus, input[type="text"]:focus {
+      outline: none;
+      border-color: #4285f4;
+    }
+    
+    textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+    
+    .field-label {
+      font-weight: 500;
+      margin-bottom: 5px;
+      display: block;
+    }
+    
+    #notification {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #4caf50;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 4px;
+      display: none;
+      z-index: 10;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    #notification.error {
+      background: #d32f2f;
+    }
+    
+    .alert-message {
+      background: #fff3cd;
+      border: 1px solid #ffeeba;
+      color: #856404;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+    }
+    
+    .delete-btn {
+      position: absolute;
+      right: 10px;
+      top: 10px;
+      background: none;
+      border: none;
+      color: #9e9e9e;
+      cursor: pointer;
+      margin: 0;
+      padding: 0;
+      font-size: 16px;
+      line-height: 1;
+    }
+    
+    .delete-btn:hover {
+      color: #d32f2f;
+    }
+    
+    #search-container {
+      margin-bottom: 15px;
+      position: relative;
+    }
+    
+    #search-input {
+      padding-left: 30px;
+      background-repeat: no-repeat;
+      background-position: 8px center;
+      background-size: 14px;
+    }
+    
+    #empty-library-message {
+      text-align: center;
+      color: #666;
+      margin: 20px 0;
+      display: none;
+    }
+    
+    .export-import {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 15px;
+    }
+    
+    #import-input {
+      display: none;
+    }
+
   </style>
 </head>
 <body>
@@ -332,7 +439,9 @@
     
     <div class="panel" id="library-panel">
       <div class="library-controls">
-        <input type="text" class="search-bar" id="search-input" placeholder="Search papers...">
+        <div id="search-container">
+          <input type="text" id="search-input" placeholder="Search papers...">
+        </div>
         <div class="button-group">
           <button id="import-btn" class="icon-button" title="Import backup">
             <svg viewBox="0 0 24 24" fill="none">

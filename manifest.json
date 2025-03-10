@@ -14,7 +14,9 @@
   "host_permissions": [
     "https://arxiv.org/*",
     "https://*.arxiv.org/*",
-    "https://scholar.google.com/*"
+    "https://scholar.google.com/*",
+    "https://*/*",
+    "http://*/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -43,12 +45,21 @@
       "js": ["content.js"],
       "run_at": "document_idle",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [
     {
       "resources": ["popup.html"],
-      "matches": ["https://arxiv.org/*", "https://*.arxiv.org/*"]
+      "matches": ["https://*/*", "http://*/*"]
     }
   ],
   "commands": {

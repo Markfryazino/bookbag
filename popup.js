@@ -70,10 +70,16 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // Check if current page is an arXiv page
+  // Check current page and get paper info
   chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
     const activeTab = tabs[0];
-    if (activeTab.url.includes('arxiv.org')) {
+    
+    // Check if we're on some kind of page we can handle
+    const isPDFPage = activeTab.url.endsWith('.pdf') || 
+                     (activeTab.url.includes('.pdf?') && !activeTab.url.includes('.pdf.html'));
+    const isArxivPage = activeTab.url.includes('arxiv.org');
+    
+    if (isArxivPage || isPDFPage) {
       // Get paper info from content script
       chrome.tabs.sendMessage(activeTab.id, { action: "getPaperInfo" }, response => {
         if (response && response.title) {
@@ -86,7 +92,13 @@ document.addEventListener('DOMContentLoaded', function() {
               existingPaper = libraryResponse.papers.find(p => p.arxivId === response.arxivId);
             }
             
-            // If no match by arxivId, try to match by title (as a fallback)
+            // If no match by arxivId or not an arXiv paper, try to match by URL
+            if (!existingPaper && response.url) {
+              existingPaper = libraryResponse.papers.find(p => 
+                p.url === response.url || p.pdfUrl === response.url);
+            }
+            
+            // If still no match, try to match by title (as a fallback)
             if (!existingPaper && response.title) {
               existingPaper = libraryResponse.papers.find(p => 
                 p.title.toLowerCase().trim() === response.title.toLowerCase().trim()
@@ -98,78 +110,138 @@ document.addEventListener('DOMContentLoaded', function() {
               ...response, // Current page's fresh metadata
               ...(existingPaper && { 
                 id: existingPaper.id,
-                notes: existingPaper.notes,
-                tags: existingPaper.tags,
-                // Preserve existing citation if needed
-                citation: existingPaper.citation || response.citation
+                notes: existingPaper.notes || '',
+                tags: existingPaper.tags || [],
+                citation: existingPaper.citation || ''
               })
             };
-      
-            // Update UI elements
-            paperTitle.textContent = currentPaperInfo.title; // Always use current title
-            paperAuthors.textContent = currentPaperInfo.authors; // Always use current authors
-            paperNotes.value = existingPaper?.notes || '';
-            paperTags.value = existingPaper?.tags?.join(', ') || '';
-            savePaperBtn.textContent = existingPaper ? 'Update Paper' : 'Save Paper';
-      
-            noPaperMessage.style.display = 'none';
-            paperDetails.style.display = 'block';
+            
+            // Show paper details in the save panel
+            showPaperDetails(currentPaperInfo);
+            
+            // If not an arXiv paper, show a message about editing fields
+            if (!response.isArxiv) {
+              const editableMessage = document.createElement('div');
+              editableMessage.className = 'alert-message';
+              editableMessage.textContent = 'This appears to be a generic PDF. Please edit the title and authors as needed.';
+              paperDetails.insertBefore(editableMessage, paperDetails.firstChild);
+            }
           });
         } else {
+          // No paper info available
           noPaperMessage.style.display = 'block';
           paperDetails.style.display = 'none';
         }
       });
     } else {
-      // Not on an arXiv page
+      // Not on a supported page
       noPaperMessage.style.display = 'block';
       paperDetails.style.display = 'none';
+      noPaperMessage.innerHTML = 'This extension works with arXiv papers and PDF files.<br>Visit an arXiv page or open a PDF to save it to your library.';
     }
   });
 
-  // Save paper button click handler
-  savePaperBtn.addEventListener('click', () => {
-    if (!currentPaperInfo) return;
-  
-    const notes = paperNotes.value;
-    const tags = paperTags.value.split(',').map(tag => tag.trim()).filter(tag => tag);
-  
-    const isUpdate = !!currentPaperInfo.id;
+  // Display paper details in the save panel
+  function showPaperDetails(paperInfo) {
+    if (!paperInfo) return;
     
-    chrome.runtime.sendMessage({ 
-      action: "fetchCitation", 
-      title: currentPaperInfo.title 
-    }, response => {
-      if (response.success) {
-        const paperData = {
-          ...currentPaperInfo,
-          notes,
-          tags,
-          citation: response.citation
-        };
-  
-        const action = isUpdate ? "updatePaper" : "savePaper";
-        
-        chrome.runtime.sendMessage({ 
-          action: action,
-          paperData 
-        }, saveResponse => {
-          if (saveResponse.success) {
-            showNotification(isUpdate ? 'Paper updated!' : 'Paper saved!');
-            if (!isUpdate) {
-              paperNotes.value = '';
-              paperTags.value = '';
-            }
-            loadPapers(); // Refresh library
+    noPaperMessage.style.display = 'none';
+    paperDetails.style.display = 'block';
+    
+    // For non-arXiv papers or if marked as editable, make fields editable
+    const isEditable = !paperInfo.isArxiv || paperInfo.isEditable;
+    
+    if (isEditable) {
+      // Create editable title field
+      paperTitle.innerHTML = '';
+      const titleInput = document.createElement('input');
+      titleInput.type = 'text';
+      titleInput.id = 'paper-title-input';
+      titleInput.className = 'paper-input';
+      titleInput.value = paperInfo.title || '';
+      paperTitle.appendChild(titleInput);
+      
+      // Create editable authors field
+      paperAuthors.innerHTML = '';
+      const authorsInput = document.createElement('input');
+      authorsInput.type = 'text';
+      authorsInput.id = 'paper-authors-input';
+      authorsInput.className = 'paper-input';
+      authorsInput.value = paperInfo.authors || '';
+      paperAuthors.appendChild(authorsInput);
+    } else {
+      // Regular display for arXiv papers
+      paperTitle.textContent = paperInfo.title || 'No title available';
+      paperAuthors.textContent = paperInfo.authors || 'No authors available';
+    }
+    
+    paperNotes.value = paperInfo.notes || '';
+    paperTags.value = paperInfo.tags ? paperInfo.tags.join(', ') : '';
+    
+    // Update the save button text based on whether paper is already saved
+    savePaperBtn.textContent = paperInfo.id ? 'Update Paper' : 'Save Paper';
+    
+    // Set up save button event listener
+    savePaperBtn.onclick = function() {
+      const notesValue = paperNotes.value;
+      const tagsValue = paperTags.value.split(',').map(tag => tag.trim()).filter(tag => tag);
+      
+      // Get title and authors from input fields if they exist
+      let titleValue = paperInfo.title;
+      let authorsValue = paperInfo.authors;
+      
+      if (isEditable) {
+        titleValue = document.getElementById('paper-title-input').value.trim();
+        authorsValue = document.getElementById('paper-authors-input').value.trim();
+      }
+      
+      // For non-arXiv papers, check that title is provided
+      if (isEditable && !titleValue) {
+        showNotification('Please provide a title for the paper', true);
+        return;
+      }
+      
+      const updatedPaperInfo = {
+        ...paperInfo,
+        title: titleValue,
+        authors: authorsValue,
+        notes: notesValue,
+        tags: tagsValue
+      };
+      
+      if (paperInfo.id) {
+        // Update existing paper
+        chrome.runtime.sendMessage({
+          action: "updatePaper",
+          paperData: updatedPaperInfo
+        }, response => {
+          if (response && response.success) {
+            showNotification('Paper updated successfully');
+            currentPaperInfo = updatedPaperInfo;
           } else {
-            showNotification('Error saving paper.');
+            showNotification('Error updating paper', true);
           }
         });
       } else {
-        showNotification('Error fetching citation.');
+        // Save new paper
+        chrome.runtime.sendMessage({
+          action: "savePaper",
+          paperData: updatedPaperInfo
+        }, response => {
+          if (response && response.success) {
+            showNotification('Paper saved to library');
+            currentPaperInfo = { ...updatedPaperInfo, id: response.savedPaper.id };
+            savePaperBtn.textContent = 'Update Paper';
+            
+            // Switch to library tab after saving
+            switchToLibraryTab();
+          } else {
+            showNotification('Error saving paper', true);
+          }
+        });
       }
-    });
-  });
+    };
+  }
 
   // Load papers from storage
   function loadPapers(searchQuery = '') {
@@ -338,9 +410,10 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Show notification
-  function showNotification(message) {
+  function showNotification(message, isError = false) {
     notification.textContent = message;
     notification.style.display = 'block';
+    notification.className = isError ? 'error' : '';
     
     setTimeout(() => {
       notification.style.opacity = '0';
